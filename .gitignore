@@ -1,0 +1,10 @@
+node_modules/
+.next/
+next-env.d.ts
+data/config.json
+*.log
+
+# secrets — never commit
+.github-pat
+.env
+.env*.local

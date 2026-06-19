@@ -1,4 +1,5 @@
 export type HeaderKV = { key: string; value: string; enabled?: boolean }
+export type Variable = { key: string; value: string }
 
 export type Auth =
   | { type: 'none' }
@@ -20,7 +21,7 @@ export type SubApi = {
   id: string
   name: string
   auth: Auth // collection-level auth, used unless an endpoint overrides it
-  variables: Record<string, string> // collection + environment {{vars}}, editable
+  variables: Variable[] // collection + environment {{vars}}, ordered & editable
   endpoints: Endpoint[]
 }
 

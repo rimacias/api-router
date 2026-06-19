@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseCollection, buildRequest, applyVars } from './postman.ts'
+import { parseCollection } from './postman.ts'
+import { buildRequest, applyVars } from './resolve.ts'
 
 const collection = {
   info: { name: 'Accounts API' },
@@ -39,8 +40,8 @@ test('parseCollection: name, auth, vars, flattened folders', () => {
   const api = parseCollection(collection, { values: [{ key: 'api_token', value: 'T0K3N' }, { key: 'who', value: 'neo' }] })
   assert.equal(api.name, 'Accounts API')
   assert.deepEqual(api.auth, { type: 'bearer', token: '{{api_token}}' })
-  assert.equal(api.variables.base, 'https://acc.example.com')
-  assert.equal(api.variables.api_token, 'T0K3N') // environment merged over collection
+  assert.equal(api.variables.find((v) => v.key === 'base')?.value, 'https://acc.example.com')
+  assert.equal(api.variables.find((v) => v.key === 'api_token')?.value, 'T0K3N') // env merged over collection
   assert.equal(api.endpoints.length, 2)
   assert.equal(api.endpoints[0].name, 'Accounts / Get account')
   assert.equal(api.endpoints[0].method, 'GET')

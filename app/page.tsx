@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { Auth, Config, Endpoint } from '@/lib/types'
+import type { Auth, Config, Endpoint, Variable } from '@/lib/types'
+import { parseCollection } from '@/lib/postman'
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']
 
@@ -39,16 +40,26 @@ export default function Page() {
     if (r.ok) setDirty(false)
   }
 
-  async function importCollection(collectionFile: File, envFile?: File) {
-    setMsg('Importing…')
-    const collection = JSON.parse(await collectionFile.text())
-    const environment = envFile ? JSON.parse(await envFile.text()) : undefined
-    const r = await fetch('/api/import', { method: 'POST', body: JSON.stringify({ collection, environment }) })
-    const j = await r.json()
-    if (!r.ok) return setMsg(`Error: ${j.error}`)
-    setCfg(await (await fetch('/api/config')).json())
-    setDirty(false)
-    setMsg(`Imported "${j.api.name}" (${j.api.endpoints.length} endpoints).`)
+  // Parse a Postman collection in the browser and load it INTO an existing
+  // sub-API (replacing its endpoints/auth, merging variables). Persist via Save.
+  async function loadCollectionInto(ai: number, collectionFile: File, envFile?: File) {
+    try {
+      const collection = JSON.parse(await collectionFile.text())
+      const environment = envFile ? JSON.parse(await envFile.text()) : undefined
+      const parsed = parseCollection(collection, environment)
+      patch((d) => {
+        const api = d.apis[ai]
+        if (!api.name.trim() || api.name === 'New API') api.name = parsed.name
+        api.auth = parsed.auth
+        api.variables = parsed.variables // re-upload = fresh vars + endpoints
+        api.endpoints = parsed.endpoints
+        // endpoints got new ids, so this API's old route targets are stale — drop them
+        d.routes.forEach((r) => (r.targets = r.targets.filter((t) => t.apiId !== api.id)))
+      })
+      setMsg(`Loaded ${parsed.endpoints.length} endpoints from "${parsed.name}". Save to persist.`)
+    } catch (e) {
+      setMsg(`Import failed: ${e instanceof Error ? e.message : String(e)}`)
+    }
   }
 
   if (!cfg) return <main>{msg || 'Loading…'}</main>
@@ -67,11 +78,12 @@ export default function Page() {
         </div>
       </div>
 
-      <ImportBox onImport={importCollection} />
-
       <section>
-        <h2>Sub-APIs ({cfg.apis.length})</h2>
-        {cfg.apis.length === 0 && <p className="muted">None yet — import a Postman collection above.</p>}
+        <div className="between">
+          <h2>Sub-APIs ({cfg.apis.length})</h2>
+          <button onClick={() => patch((d) => { d.apis.push({ id: crypto.randomUUID(), name: 'New API', auth: { type: 'none' }, variables: [], endpoints: [] }) })}>+ Add sub-API</button>
+        </div>
+        {cfg.apis.length === 0 && <p className="muted">None yet — add a sub-API, then upload its Postman collection.</p>}
         {cfg.apis.map((api, ai) => (
           <div className="card" key={api.id}>
             <div className="between">
@@ -83,10 +95,12 @@ export default function Page() {
               })}>Delete API</button>
             </div>
 
+            <CollectionUploader hasEndpoints={api.endpoints.length > 0} onLoad={(c, e) => loadCollectionInto(ai, c, e)} />
+
             <AuthEditor auth={api.auth} onChange={(a) => patch((d) => { d.apis[ai].auth = a })} />
 
             <label>Variables (resolve {'{{name}}'} in URLs, headers, body & auth)</label>
-            <VarsEditor key={api.id} vars={api.variables} onChange={(v) => patch((d) => { d.apis[ai].variables = v })} />
+            <VarsEditor vars={api.variables} onChange={(v) => patch((d) => { d.apis[ai].variables = v })} />
 
             <label style={{ marginTop: 12 }}>Endpoints ({api.endpoints.length})</label>
             {api.endpoints.map((ep, ei) => (
@@ -125,7 +139,7 @@ export default function Page() {
               <button className="danger" onClick={() => patch((d) => { d.routes.splice(ri, 1) })}>Delete</button>
             </div>
             <label>Fan out to ({route.targets.length} selected)</label>
-            {cfg.apis.length === 0 && <span className="muted">Import an API first.</span>}
+            {cfg.apis.length === 0 && <span className="muted">Add a sub-API first.</span>}
             {cfg.apis.map((api) => (
               <div key={api.id} style={{ marginTop: 6 }}>
                 <div className="muted" style={{ fontSize: 12 }}>{api.name}</div>
@@ -154,15 +168,14 @@ export default function Page() {
   )
 }
 
-function ImportBox({ onImport }: { onImport: (c: File, e?: File) => void }) {
+function CollectionUploader({ hasEndpoints, onLoad }: { hasEndpoints: boolean; onLoad: (c: File, e?: File) => void }) {
   const [col, setCol] = useState<File | null>(null)
   const [env, setEnv] = useState<File | null>(null)
   return (
-    <section className="card">
-      <h3>Import Postman collection</h3>
-      <div className="grid2" style={{ marginTop: 10 }}>
+    <div className="sub">
+      <div className="grid2">
         <div>
-          <label>Collection (v2.1 JSON) — required</label>
+          <label>Postman collection (v2.1 JSON){hasEndpoints ? ' — re-upload replaces endpoints' : ''}</label>
           <input type="file" accept=".json,application/json" onChange={(e) => setCol(e.target.files?.[0] ?? null)} />
         </div>
         <div>
@@ -170,8 +183,10 @@ function ImportBox({ onImport }: { onImport: (c: File, e?: File) => void }) {
           <input type="file" accept=".json,application/json" onChange={(e) => setEnv(e.target.files?.[0] ?? null)} />
         </div>
       </div>
-      <button className="primary" style={{ marginTop: 12 }} disabled={!col} onClick={() => col && onImport(col, env ?? undefined)}>Import</button>
-    </section>
+      <button style={{ marginTop: 10 }} disabled={!col} onClick={() => col && onLoad(col, env ?? undefined)}>
+        {hasEndpoints ? 'Re-upload collection' : 'Upload collection'}
+      </button>
+    </div>
   )
 }
 
@@ -210,23 +225,20 @@ function AuthEditor({ auth, onChange }: { auth: Auth; onChange: (a: Auth) => voi
   )
 }
 
-function VarsEditor({ vars, onChange }: { vars: Record<string, string>; onChange: (v: Record<string, string>) => void }) {
-  // Local array keeps row order/identity stable while editing keys; record is derived.
-  const [rows, setRows] = useState<[string, string][]>(() => Object.entries(vars))
-  const sync = (next: [string, string][]) => {
-    setRows(next)
-    onChange(Object.fromEntries(next.filter(([k]) => k.trim())))
-  }
+function VarsEditor({ vars, onChange }: { vars: Variable[]; onChange: (v: Variable[]) => void }) {
+  // Fully controlled, index-keyed: reflects imports immediately and keeps input
+  // focus stable while editing keys (no internal state, no record collapse).
+  const set = (i: number, p: Partial<Variable>) => onChange(vars.map((r, j) => (j === i ? { ...r, ...p } : r)))
   return (
     <div>
-      {rows.map(([k, v], i) => (
+      {vars.map((r, i) => (
         <div className="row" key={i} style={{ marginTop: 4 }}>
-          <input className="mono inline" style={{ width: 200 }} placeholder="name" value={k} onChange={(e) => sync(rows.map((r, j) => (j === i ? [e.target.value, r[1]] : r)))} />
-          <input className="mono" style={{ flex: 1 }} placeholder="value" value={v} onChange={(e) => sync(rows.map((r, j) => (j === i ? [r[0], e.target.value] : r)))} />
-          <button className="danger" onClick={() => sync(rows.filter((_, j) => j !== i))}>×</button>
+          <input className="mono inline" style={{ width: 200 }} placeholder="name" value={r.key} onChange={(e) => set(i, { key: e.target.value })} />
+          <input className="mono" style={{ flex: 1 }} placeholder="value" value={r.value} onChange={(e) => set(i, { value: e.target.value })} />
+          <button className="danger" onClick={() => onChange(vars.filter((_, j) => j !== i))}>×</button>
         </div>
       ))}
-      <button style={{ marginTop: 6 }} onClick={() => sync([...rows, ['', '']])}>+ Variable</button>
+      <button style={{ marginTop: 6 }} onClick={() => onChange([...vars, { key: '', value: '' }])}>+ Variable</button>
     </div>
   )
 }

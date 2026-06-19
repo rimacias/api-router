@@ -1,8 +1,10 @@
-import { randomUUID } from 'node:crypto'
 import type { Auth, Endpoint, HeaderKV, SubApi } from './types'
 
-// --- Postman collection v2.1 parsing ----------------------------------------
-// We only read the fields we forward. Unknown fields are ignored, not an error.
+// --- Postman collection v2.1 parsing -----------------------------------------
+// Isomorphic (runs in the browser and on the server). We only read the fields we
+// forward; unknown fields are ignored, not an error.
+
+const uid = () => globalThis.crypto.randomUUID()
 
 type PmAuthEntry = { key: string; value: string }
 type PmAuth = { type?: string } & Record<string, PmAuthEntry[] | string | undefined>
@@ -40,8 +42,7 @@ function rawBody(body: unknown): string | undefined {
   if (!body || typeof body !== 'object') return undefined
   const b = body as { mode?: string; raw?: string; urlencoded?: PmAuthEntry[]; formdata?: PmAuthEntry[] }
   if (b.mode === 'raw') return b.raw
-  if (b.mode === 'urlencoded' && b.urlencoded)
-    return new URLSearchParams(entries(b.urlencoded)).toString()
+  if (b.mode === 'urlencoded' && b.urlencoded) return new URLSearchParams(entries(b.urlencoded)).toString()
   if (b.mode === 'formdata' && b.formdata) return JSON.stringify(entries(b.formdata))
   return b.raw
 }
@@ -66,13 +67,9 @@ function flatten(items: PmItem[] | undefined, prefix = ''): Endpoint[] {
       out.push(...flatten(it.item, name)) // folder -> recurse
     } else if (it.request) {
       const r = it.request
-      const headers: HeaderKV[] = (r.header ?? []).map((h) => ({
-        key: h.key,
-        value: h.value ?? '',
-        enabled: !h.disabled,
-      }))
+      const headers: HeaderKV[] = (r.header ?? []).map((h) => ({ key: h.key, value: h.value ?? '', enabled: !h.disabled }))
       out.push({
-        id: randomUUID(),
+        id: uid(),
         name: name || r.method || 'request',
         method: (r.method || 'GET').toUpperCase(),
         url: rawUrl(r.url),
@@ -93,61 +90,16 @@ type PmCollection = {
 }
 type PmEnvironment = { values?: { key: string; value: string; enabled?: boolean }[] }
 
+/** Parse a Postman v2.1 collection (+ optional environment) into a SubApi. */
 export function parseCollection(collection: PmCollection, environment?: PmEnvironment): SubApi {
-  const variables: Record<string, string> = {}
-  for (const v of collection.variable ?? []) if (v.key) variables[v.key] = v.value ?? ''
-  for (const v of environment?.values ?? []) if (v.key && v.enabled !== false) variables[v.key] = v.value ?? ''
+  const vmap = new Map<string, string>() // preserves order, env overrides collection
+  for (const v of collection.variable ?? []) if (v.key) vmap.set(v.key, v.value ?? '')
+  for (const v of environment?.values ?? []) if (v.key && v.enabled !== false) vmap.set(v.key, v.value ?? '')
   return {
-    id: randomUUID(),
+    id: uid(),
     name: collection.info?.name || 'Imported API',
     auth: parseAuth(collection.auth),
-    variables,
+    variables: [...vmap].map(([key, value]) => ({ key, value })),
     endpoints: flatten(collection.item),
   }
-}
-
-// --- Request resolution (used by the gateway) --------------------------------
-
-export function applyVars(s: string, vars: Record<string, string>): string {
-  return s.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, k: string) => vars[k] ?? `{{${k}}}`)
-}
-
-/** Mutates `headers` for header-based auth; returns a query fragment for apikey-in-query. */
-function applyAuth(auth: Auth, headers: Record<string, string>, vars: Record<string, string>): string {
-  switch (auth.type) {
-    case 'bearer':
-      headers['Authorization'] = `Bearer ${applyVars(auth.token, vars)}`
-      return ''
-    case 'basic': {
-      const u = applyVars(auth.username, vars)
-      const p = applyVars(auth.password, vars)
-      headers['Authorization'] = `Basic ${Buffer.from(`${u}:${p}`).toString('base64')}`
-      return ''
-    }
-    case 'apikey': {
-      const key = applyVars(auth.key, vars)
-      const val = applyVars(auth.value, vars)
-      if (auth.in === 'query') return `${encodeURIComponent(key)}=${encodeURIComponent(val)}`
-      headers[key] = val
-      return ''
-    }
-    default:
-      return ''
-  }
-}
-
-/** Build the outbound request for an endpoint, resolving {{vars}} and auth. */
-export function buildRequest(ep: Endpoint, api: SubApi) {
-  const vars = api.variables ?? {}
-  let url = applyVars(ep.url, vars)
-  const headers: Record<string, string> = {}
-  for (const h of ep.headers ?? []) {
-    if (h.enabled === false) continue
-    headers[h.key] = applyVars(h.value, vars)
-  }
-  const auth: Auth = ep.auth ?? api.auth ?? { type: 'none' }
-  const q = applyAuth(auth, headers, vars)
-  if (q) url += (url.includes('?') ? '&' : '?') + q
-  const body = ep.body ? applyVars(ep.body, vars) : undefined
-  return { method: (ep.method || 'GET').toUpperCase(), url, headers, body }
 }

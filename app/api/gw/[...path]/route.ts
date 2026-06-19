@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { readConfig } from '@/lib/store'
-import { buildRequest } from '@/lib/postman'
+import { buildRequest } from '@/lib/resolve'
 
 export const dynamic = 'force-dynamic'
 

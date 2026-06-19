@@ -3,6 +3,7 @@ node_modules/
 next-env.d.ts
 data/config.json
 *.log
+.DS_Store
 
 # secrets — never commit
 .github-pat

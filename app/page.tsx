@@ -110,11 +110,11 @@ export default function Page() {
           <div className="card" key={api.id}>
             <div className="between">
               <input style={{ fontWeight: 600, maxWidth: 360 }} value={api.name} onChange={(e) => patch((d) => { d.apis[ai].name = e.target.value })} />
-              <button className="danger" onClick={() => patch((d) => {
+              <button className="danger" onClick={() => { if (!confirm(`Delete sub-API "${api.name}"? It will be removed from all routes.`)) return; patch((d) => {
                 const id = d.apis[ai].id
                 d.apis.splice(ai, 1)
                 d.routes.forEach((r) => (r.targets = r.targets.filter((t) => t.apiId !== id)))
-              })}>Delete API</button>
+              }) }}>Delete API</button>
             </div>
 
             <CollectionUploader hasEndpoints={api.endpoints.length > 0} onLoad={(c, e) => loadCollectionInto(ai, c, e)} />
@@ -136,10 +136,10 @@ export default function Page() {
                 <EndpointEditor
                   ep={ep}
                   onChange={(fn) => patch((d) => fn(d.apis[ai].endpoints[ei]))}
-                  onDelete={() => patch((d) => {
+                  onDelete={() => { if (!confirm(`Delete endpoint "${ep.name}"?`)) return; patch((d) => {
                     d.apis[ai].endpoints.splice(ei, 1)
                     d.routes.forEach((r) => (r.targets = r.targets.filter((t) => t.endpointId !== ep.id)))
-                  })}
+                  }) }}
                 />
               </details>
             ))}
@@ -162,7 +162,7 @@ export default function Page() {
                 <span className="mono muted">/api/gw</span>
                 <input className="mono" style={{ maxWidth: 280 }} value={route.path} onChange={(e) => patch((d) => { d.routes[ri].path = e.target.value })} />
               </div>
-              <button className="danger" onClick={() => patch((d) => { d.routes.splice(ri, 1) })}>Delete</button>
+              <button className="danger" onClick={() => { if (!confirm(`Delete route ${route.path}?`)) return; patch((d) => { d.routes.splice(ri, 1) }) }}>Delete</button>
             </div>
             <label>Fan out to ({route.targets.length} selected)</label>
             {cfg.apis.length === 0 && <span className="muted">Add a sub-API first.</span>}
@@ -209,7 +209,7 @@ function CollectionUploader({ hasEndpoints, onLoad }: { hasEndpoints: boolean; o
           <input type="file" accept=".json,application/json" onChange={(e) => setEnv(e.target.files?.[0] ?? null)} />
         </div>
       </div>
-      <button style={{ marginTop: 10 }} disabled={!col} onClick={() => col && onLoad(col, env ?? undefined)}>
+      <button style={{ marginTop: 10 }} disabled={!col} onClick={() => { if (col && (!hasEndpoints || confirm('Replace this sub-API’s endpoints, auth and variables with the uploaded collection?'))) onLoad(col, env ?? undefined) }}>
         {hasEndpoints ? 'Re-upload collection' : 'Upload collection'}
       </button>
     </div>

@@ -1,0 +1,9 @@
+{
+  "info": { "name": "Inventory API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+  "variable": [{ "key": "base", "value": "http://localhost:18083" }],
+  "item": [
+    { "name": "Health", "request": { "method": "GET", "url": "{{base}}/health" } },
+    { "name": "Items", "request": { "method": "GET", "url": "{{base}}/items" } },
+    { "name": "Get item", "request": { "method": "GET", "url": "{{base}}/items/42" } }
+  ]
+}

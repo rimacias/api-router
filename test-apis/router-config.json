@@ -1,0 +1,54 @@
+{
+  "apis": [
+    {
+      "id": "accounts",
+      "name": "Accounts API",
+      "auth": { "type": "none" },
+      "variables": [{ "key": "base", "value": "http://mock-accounts:8080" }],
+      "endpoints": [
+        { "id": "acc-health", "name": "Health", "method": "GET", "url": "{{base}}/health", "headers": [] },
+        { "id": "acc-account", "name": "Get account", "method": "GET", "url": "{{base}}/account", "headers": [] }
+      ]
+    },
+    {
+      "id": "billing",
+      "name": "Billing API",
+      "auth": { "type": "none" },
+      "variables": [{ "key": "base", "value": "http://mock-billing:8080" }],
+      "endpoints": [
+        { "id": "bil-health", "name": "Health", "method": "GET", "url": "{{base}}/health", "headers": [] },
+        { "id": "bil-invoices", "name": "Invoices", "method": "GET", "url": "{{base}}/invoices", "headers": [] }
+      ]
+    },
+    {
+      "id": "inventory",
+      "name": "Inventory API",
+      "auth": { "type": "none" },
+      "variables": [{ "key": "base", "value": "http://mock-inventory:8080" }],
+      "endpoints": [
+        { "id": "inv-health", "name": "Health", "method": "GET", "url": "{{base}}/health", "headers": [] },
+        { "id": "inv-items", "name": "Items", "method": "GET", "url": "{{base}}/items", "headers": [] }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "r-all",
+      "path": "/all",
+      "targets": [
+        { "apiId": "accounts", "endpointId": "acc-account" },
+        { "apiId": "billing", "endpointId": "bil-invoices" },
+        { "apiId": "inventory", "endpointId": "inv-items" }
+      ]
+    },
+    {
+      "id": "r-health",
+      "path": "/health",
+      "targets": [
+        { "apiId": "accounts", "endpointId": "acc-health" },
+        { "apiId": "billing", "endpointId": "bil-health" },
+        { "apiId": "inventory", "endpointId": "inv-health" }
+      ]
+    }
+  ]
+}

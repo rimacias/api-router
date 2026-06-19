@@ -38,3 +38,22 @@ npm test         # parser + auth/variable resolution checks
   collection + environment resolve in URLs, headers, body, and auth.
 - **Storage** is a single JSON file with in-process write serialization — fine
   for one instance. Cluster it → move to SQLite/Postgres.
+
+## Test APIs, Docker & one-command lift
+
+Three throwaway sub-APIs (one generic mock in `mock-api/`, run x3) ship for testing the router.
+
+```bash
+make up      # build + start router (:3000) and mocks (:18081/:18082/:18083)
+make demo    # same, then seed a ready-made config: curl -s localhost:3000/api/gw/all | jq
+make down    # stop
+make test    # unit + integration tests (host node, no docker)
+```
+
+Port 3000 already in use? Override it: `ROUTER_PORT=3001 make up`.
+
+Manual UI flow (router on host): `make dev`, then in the UI add a sub-API and upload a
+collection from `test-apis/*.postman_collection.json` (they target the host-exposed mock ports).
+
+`make seed` copies `test-apis/router-config.json` (endpoints addressed by compose service name)
+into `data/config.json` so the in-container router can reach the mocks.

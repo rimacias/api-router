@@ -1,0 +1,13 @@
+{
+  "info": { "name": "Accounts API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}" }] },
+  "variable": [
+    { "key": "base", "value": "http://localhost:18081" },
+    { "key": "token", "value": "demo-accounts-token" }
+  ],
+  "item": [
+    { "name": "Health", "request": { "method": "GET", "url": "{{base}}/health" } },
+    { "name": "Get account", "request": { "method": "GET", "url": "{{base}}/account" } },
+    { "name": "Create account", "request": { "method": "POST", "url": "{{base}}/accounts", "body": { "mode": "raw", "raw": "{\"name\":\"acme\"}" } } }
+  ]
+}

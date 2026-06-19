@@ -1,0 +1,13 @@
+{
+  "info": { "name": "Billing API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+  "auth": { "type": "apikey", "apikey": [{ "key": "key", "value": "X-Api-Key" }, { "key": "value", "value": "{{apiKey}}" }, { "key": "in", "value": "header" }] },
+  "variable": [
+    { "key": "base", "value": "http://localhost:18082" },
+    { "key": "apiKey", "value": "demo-billing-key" }
+  ],
+  "item": [
+    { "name": "Health", "request": { "method": "GET", "url": "{{base}}/health" } },
+    { "name": "Invoices", "request": { "method": "GET", "url": "{{base}}/invoices" } },
+    { "name": "Create charge", "request": { "method": "POST", "url": "{{base}}/charges", "body": { "mode": "raw", "raw": "{\"amount\":100}" } } }
+  ]
+}

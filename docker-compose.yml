@@ -1,0 +1,37 @@
+services:
+  router:
+    build: .
+    environment:
+      # Docker auto-injects HOSTNAME (=container id), which Next's standalone
+      # server would otherwise bind to. Force 0.0.0.0 so it's reachable.
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+    ports:
+      - "${ROUTER_PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - mock-accounts
+      - mock-billing
+      - mock-inventory
+
+  mock-accounts:
+    build: ./mock-api
+    environment:
+      API_NAME: "Accounts API"
+    ports:
+      - "18081:8080"
+
+  mock-billing:
+    build: ./mock-api
+    environment:
+      API_NAME: "Billing API"
+    ports:
+      - "18082:8080"
+
+  mock-inventory:
+    build: ./mock-api
+    environment:
+      API_NAME: "Inventory API"
+    ports:
+      - "18083:8080"

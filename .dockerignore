@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+data/config.json
+*.log
+PLAN.md
+test-apis
+mock-api

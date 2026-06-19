@@ -13,6 +13,22 @@ function defaultAuth(type: string): Auth {
   return { type: 'none' }
 }
 
+function FanOut() {
+  return (
+    <svg className="fanout" width="86" height="46" viewBox="0 0 86 46" aria-hidden="true">
+      <g className="lines">
+        <path d="M10,23 C42,23 46,9 78,9" />
+        <path d="M10,23 L78,23" />
+        <path d="M10,23 C42,23 46,37 78,37" />
+      </g>
+      <circle className="src" cx="10" cy="23" r="4.5" />
+      <circle className="node" cx="78" cy="9" r="3.4" style={{ animationDelay: '0s' }} />
+      <circle className="node" cx="78" cy="23" r="3.4" style={{ animationDelay: '0.3s' }} />
+      <circle className="node" cx="78" cy="37" r="3.4" style={{ animationDelay: '0.6s' }} />
+    </svg>
+  )
+}
+
 export default function Page() {
   const [cfg, setCfg] = useState<Config | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -67,23 +83,29 @@ export default function Page() {
   return (
     <main>
       <div className="sticky between">
-        <div>
-          <h1>API Router</h1>
-          <span className="muted">Fan-out to all mapped sub-APIs at once · configs in data/config.json</span>
+        <div className="brand">
+          <FanOut />
+          <div>
+            <h1>API ROUTER<span className="dim">/</span>console</h1>
+            <span className="tagline">Fan-out gateway · one route → many sub-APIs</span>
+          </div>
         </div>
         <div className="row">
-          {dirty && <span className="tag" style={{ color: 'var(--warn)' }}>unsaved</span>}
-          <span className="muted">{msg}</span>
+          {dirty && <span className="tag live">● unsaved</span>}
+          <span className="muted mono" style={{ fontSize: 12 }}>{msg}</span>
           <button className="primary" onClick={save} disabled={!dirty}>Save</button>
         </div>
       </div>
 
-      <section>
-        <div className="between">
-          <h2>Sub-APIs ({cfg.apis.length})</h2>
+      <section className="reveal" style={{ animationDelay: '60ms' }}>
+        <div className="sec-head">
+          <span className="idx">01</span>
+          <h2>Sub-APIs</h2>
+          <span className="count">{cfg.apis.length}</span>
+          <span className="rule" />
           <button onClick={() => patch((d) => { d.apis.push({ id: crypto.randomUUID(), name: 'New API', auth: { type: 'none' }, variables: [], endpoints: [] }) })}>+ Add sub-API</button>
         </div>
-        {cfg.apis.length === 0 && <p className="muted">None yet — add a sub-API, then upload its Postman collection.</p>}
+        {cfg.apis.length === 0 && <p className="muted">No sub-APIs yet — add one, then upload its Postman collection.</p>}
         {cfg.apis.map((api, ai) => (
           <div className="card" key={api.id}>
             <div className="between">
@@ -104,9 +126,10 @@ export default function Page() {
 
             <label style={{ marginTop: 12 }}>Endpoints ({api.endpoints.length})</label>
             {api.endpoints.map((ep, ei) => (
-              <details className="sub" key={ep.id}>
+              <details className="sub endpoint" key={ep.id}>
                 <summary className="row">
-                  <span className="method" style={{ color: 'var(--accent)' }}>{ep.method}</span>
+                  <span className="caret">▸</span>
+                  <span className="method" data-method={ep.method}>{ep.method}</span>
                   <span>{ep.name}</span>
                   <span className="muted mono" style={{ fontSize: 11, marginLeft: 'auto' }}>{ep.url}</span>
                 </summary>
@@ -124,9 +147,12 @@ export default function Page() {
         ))}
       </section>
 
-      <section>
-        <div className="between">
-          <h2>Routes ({cfg.routes.length})</h2>
+      <section className="reveal" style={{ animationDelay: '140ms' }}>
+        <div className="sec-head">
+          <span className="idx">02</span>
+          <h2>Routes</h2>
+          <span className="count">{cfg.routes.length}</span>
+          <span className="rule" />
           <button onClick={() => patch((d) => { d.routes.push({ id: crypto.randomUUID(), path: '/new-route', targets: [] }) })}>+ Add route</button>
         </div>
         {cfg.routes.map((route, ri) => (
@@ -153,7 +179,7 @@ export default function Page() {
                         if (idx >= 0) ts.splice(idx, 1)
                         else ts.push({ apiId: api.id, endpointId: ep.id })
                       })} />
-                      <span className="method">{ep.method}</span> {ep.name}
+                      <span className="method" data-method={ep.method}>{ep.method}</span> {ep.name}
                     </label>
                   )
                 })}
@@ -282,52 +308,99 @@ function EndpointEditor({ ep, onChange, onDelete }: { ep: Endpoint; onChange: (f
   )
 }
 
+type GwResult = { status: number; ok: boolean; latencyMs: number; body: unknown } | { error: string; latencyMs?: number }
+
 function Tester({ routes, dirty }: { routes: string[]; dirty: boolean }) {
   const [path, setPath] = useState(routes[0] ?? '/account')
   const [method, setMethod] = useState('GET')
   const [body, setBody] = useState('')
-  const [out, setOut] = useState('')
+  const [res, setRes] = useState<{ http: number; text: string; data: any } | null>(null)
+  const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
   async function send() {
     setBusy(true)
-    setOut('')
+    setErr('')
+    setRes(null)
     const url = '/api/gw/' + path.replace(/^\/+/, '')
     try {
       const r = await fetch(url, { method, body: method === 'GET' || method === 'HEAD' ? undefined : body || undefined })
-      const j = await r.json()
-      setOut(`${r.status} ${r.statusText}\n\n` + JSON.stringify(j, null, 2))
+      setRes({ http: r.status, text: r.statusText, data: await r.json() })
     } catch (e) {
-      setOut(String(e))
+      setErr(e instanceof Error ? e.message : String(e))
     }
     setBusy(false)
   }
 
+  const results: Record<string, GwResult> | undefined = res?.data?.results
+  const httpOk = res ? res.http >= 200 && res.http < 300 : false
+
   return (
-    <section className="card">
-      <h3>Test a route</h3>
-      {dirty && <p className="muted">Save first — the gateway reads the saved config on disk.</p>}
-      <div className="row" style={{ marginTop: 8 }}>
-        <select className="inline" value={method} onChange={(e) => setMethod(e.target.value)}>
-          {METHODS.map((m) => <option key={m}>{m}</option>)}
-        </select>
-        <span className="mono muted">/api/gw</span>
-        <input className="mono" style={{ maxWidth: 280 }} value={path} onChange={(e) => setPath(e.target.value)} />
-        {routes.length > 0 && (
-          <select className="inline" value="" onChange={(e) => e.target.value && setPath(e.target.value)}>
-            <option value="">pick a route…</option>
-            {routes.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-        )}
-        <button className="primary" onClick={send} disabled={busy}>{busy ? 'Sending…' : 'Send'}</button>
+    <section className="reveal" style={{ animationDelay: '220ms' }}>
+      <div className="sec-head">
+        <span className="idx">03</span>
+        <h2>Test</h2>
+        <span className="rule" />
       </div>
-      {method !== 'GET' && method !== 'HEAD' && (
-        <>
-          <label>Request body (forwarded to non-GET targets)</label>
-          <textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} />
-        </>
-      )}
-      {out && <pre style={{ marginTop: 12 }}>{out}</pre>}
+      <div className="card">
+        {dirty && <p className="muted" style={{ margin: '0 0 12px' }}>Unsaved changes — the gateway reads the <strong>saved</strong> config on disk. Save before testing.</p>}
+        <div className="row">
+          <select className="inline" value={method} onChange={(e) => setMethod(e.target.value)}>
+            {METHODS.map((m) => <option key={m}>{m}</option>)}
+          </select>
+          <span className="mono muted" style={{ fontSize: 12 }}>/api/gw</span>
+          <input className="mono" style={{ maxWidth: 260 }} value={path} onChange={(e) => setPath(e.target.value)} />
+          {routes.length > 0 && (
+            <select className="inline" value="" onChange={(e) => e.target.value && setPath(e.target.value)}>
+              <option value="">routes…</option>
+              {routes.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          )}
+          <button className="primary" onClick={send} disabled={busy}>{busy ? 'Sending…' : 'Send ▸'}</button>
+        </div>
+        {method !== 'GET' && method !== 'HEAD' && (
+          <>
+            <label>Request body (forwarded to non-GET targets)</label>
+            <textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} />
+          </>
+        )}
+
+        {err && (
+          <div className="readout">
+            <div className="readout-bar">Response<span className="status-pill" style={{ color: 'var(--err)' }}>NETWORK ERROR</span></div>
+            <div className="target-row"><span className="dot err" /><span className="name">{err}</span></div>
+          </div>
+        )}
+
+        {res && (
+          <div className="readout">
+            <div className="readout-bar">
+              Response · <span style={{ color: 'var(--teal)' }}>{res.data?.route ?? path}</span>
+              <span className="status-pill" style={{ color: httpOk ? 'var(--ok)' : 'var(--warn)' }}>{res.http} {res.text || (res.http === 207 ? 'Multi-Status' : '')}</span>
+            </div>
+            {results ? (
+              Object.entries(results).map(([label, v]) => {
+                const ok = 'ok' in v && v.ok
+                return (
+                  <div className="target-row" key={label}>
+                    <span className={`dot ${ok ? 'ok' : 'err'}`} />
+                    <span className="name">{label}</span>
+                    {'error' in v && <span className="code" style={{ color: 'var(--err)' }}>{v.error}</span>}
+                    {'status' in v && <span className="code">HTTP {v.status}</span>}
+                    {typeof v.latencyMs === 'number' && <span className="lat">{v.latencyMs}ms</span>}
+                  </div>
+                )
+              })
+            ) : (
+              <div className="target-row"><span className="dot err" /><span className="name">{res.data?.error ?? 'no targets resolved'}</span></div>
+            )}
+            <details className="raw">
+              <summary>Raw response</summary>
+              <pre>{JSON.stringify(res.data, null, 2)}</pre>
+            </details>
+          </div>
+        )}
+      </div>
     </section>
   )
 }
